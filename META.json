@@ -1,0 +1,48 @@
+{
+   "name": "pg_logq",
+   "abstract": "displays log content from database session",
+   "version": "0.0.1",
+   "maintainer": [
+      "Pierre Forstmann"
+   ],
+   "license": {
+      "PostgreSQL": "http://www.postgresql.org/about/licence"
+   },
+   "prereqs": {
+      "runtime": {
+         "requires": {
+            "PostgreSQL": "9.4.0"
+         },
+         "recommends": {
+            "PostgreSQL": "9.5.21"
+         }
+      }
+   },
+   "provides": {
+     "pg_queryid": {
+         "abstract": "displays log content from database session",
+         "file": "pg_log.c",
+         "docfile": "README.md",
+         "version": "0.0.1"
+      }
+   },
+   "resources": {
+      "bugtracker": {
+         "web": "http://github.com/pierreforstmann/pg_log/issues"
+      },
+      "repository": {
+        "url":  "https://github.com/pierreforstmann/pg_log.git",
+        "web":  "https://github.com/pierreforstmann/pg_log",
+        "type": "git"
+      }
+   },
+   "generated_by": "Pierre Forstmann",
+   "meta-spec": {
+      "version": "0.0.1",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "log",
+      "messages",
+   ]
+}
