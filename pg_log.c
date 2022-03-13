@@ -12,6 +12,7 @@
 */
 #include "postgres.h"
 
+#include "utils/guc.h"
 #include "utils/fmgrprotos.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -67,12 +68,20 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	int		line_count;
 	Datum 		text;
 	PGFunction	func;
-	char		*log_file_name;	
+	const char	*log_filename;	
+	const char	*log_directory;
+	StringInfoData	full_log_filename;
+	
+	log_directory = GetConfigOption("log_directory", true, false);
+	log_filename = GetConfigOption("log_filename", true, false);
+	initStringInfo(&full_log_filename);
+	appendStringInfo(&full_log_filename, "./");
+	appendStringInfoString(&full_log_filename, log_directory);
+	appendStringInfo(&full_log_filename, "/");
+	appendStringInfoString(&full_log_filename, log_filename);
 
 	func = pg_read_file;
-	log_file_name = palloc(256);
-	strcpy(log_file_name, "./log/messages");
-	text =  DirectFunctionCall1Coll(func, 0, (Datum)log_file_name);
+	text =  DirectFunctionCall1Coll(func, 100, (Datum)full_log_filename.data);
 
 	line_count = 0;
 
