@@ -66,22 +66,27 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	MemoryContext 	oldcontext;
 	int 		i;
 	int		line_count;
-	Datum 		text;
+	text		lfn;	
 	PGFunction	func;
 	const char	*log_filename;	
 	const char	*log_directory;
 	StringInfoData	full_log_filename;
+	Datum		result;
+
 	
 	log_directory = GetConfigOption("log_directory", true, false);
 	log_filename = GetConfigOption("log_filename", true, false);
+
 	initStringInfo(&full_log_filename);
 	appendStringInfo(&full_log_filename, "./");
 	appendStringInfoString(&full_log_filename, log_directory);
 	appendStringInfo(&full_log_filename, "/");
 	appendStringInfoString(&full_log_filename, log_filename);
 
-	func = pg_read_file;
-	text =  DirectFunctionCall1Coll(func, 100, (Datum)full_log_filename.data);
+	func = pg_read_file_v2;
+	memcpy(VARDATA(&lfn), full_log_filename.data, full_log_filename.len);
+	SET_VARSIZE(&lfn, sizeof(text) + full_log_filename.len);
+	result =  DirectFunctionCall1Coll(func, 100, (Datum)&lfn);
 
 	line_count = 0;
 
