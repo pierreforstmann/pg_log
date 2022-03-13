@@ -64,14 +64,16 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	Tuplestorestate *tupstore;
 	AttInMetadata	 *attinmeta;
 	MemoryContext 	oldcontext;
-	int 		i;
-	int		line_count;
 	text		lfn;	
 	PGFunction	func;
 	const char	*log_filename;	
 	const char	*log_directory;
 	StringInfoData	full_log_filename;
-	Datum		result;
+	text		*result;
+	bool		result_processed = false;
+	int		l;
+	char		*p;
+	int		c;
 
 	
 	log_directory = GetConfigOption("log_directory", true, false);
@@ -86,9 +88,9 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	func = pg_read_file_v2;
 	memcpy(VARDATA(&lfn), full_log_filename.data, full_log_filename.len);
 	SET_VARSIZE(&lfn, sizeof(text) + full_log_filename.len);
-	result =  DirectFunctionCall1Coll(func, 100, (Datum)&lfn);
+	result =  (text *)DirectFunctionCall1Coll(func, 100, (Datum)&lfn);
 
-	line_count = 0;
+	elog(INFO, "pg_log: pg_read_file_v2 returned %d bytes", VARSIZE(result));
 
 	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
@@ -110,19 +112,37 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 
 	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-	for (i=0; i < line_count; i++)
+	l = 0;	
+	c = 0;
+	p = VARDATA(result);
+	while (result_processed == false)	
 	{
-		char 		*values[2];
+		char 		*values[1];
 		HeapTuple	tuple;
-		char		buf_v1[10];
-		char		buf_v2[30];
+		char		buf_v1[300];
+		int		i;
 
+		for (i = 0;  *p != '\n'; i++, p++)
+		{
+			buf_v1[i] = *p;
+			l++;
+		}
+		p++;
+		buf_v1[++i] = '\n';
+		buf_v1[++i] = '\0';
+		l++;
+		c++;
 
 		values[0] = buf_v1;
 		tuple = BuildTupleFromCStrings(attinmeta, values);
 		tuplestore_puttuple(tupstore, tuple);
 
+		if ( l > VARSIZE(result))
+			result_processed = true;
+
 	}
+
+	elog(INFO, "pg_log: returns %d rows", c);
 
 	return (Datum)0;
 
