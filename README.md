@@ -18,7 +18,7 @@ This extension has been validated with PostgreSQL  14.
 
 Extension can be loaded:
 
-1. in local session with `LOAD 'pg_logqueryid'`; <br>
+1. in local session with `LOAD pg_log`; <br>
 2. using `session_preload_libraries` parameter in a specific connection <br>
 3. at server level with `shared_preload_libraries` parameter. <br> 
 
