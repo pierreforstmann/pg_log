@@ -25,9 +25,10 @@ PG_MODULE_MAGIC;
 void		_PG_init(void);
 void		_PG_fini(void);
 
+PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
-static Datum pg_log_internal(char *filename);
-static Datum pg_build_result(FunctionCallInfo fcinfo);
+static Datum pg_read_internal(char *filename);
+static Datum pg_log_internal(FunctionCallInfo fcinfo);
 
 static text *l_result;
 
@@ -53,22 +54,21 @@ _PG_fini(void)
 	elog(DEBUG5, "pg_log:_PG_fini():exit");
 }
 
-Datum pg_log(PG_FUNCTION_ARGS)
+Datum pg_read(PG_FUNCTION_ARGS)
 {
    char *filename;
 
    filename = PG_GETARG_CSTRING(0); 
-   return (pg_log_internal(filename));
+   return (pg_read_internal(filename));
 }
 
-static Datum pg_log_internal(char *filename)
+static Datum pg_read_internal(char *filename)
 {
 
-	const char	*log_filename;	
 	const char	*log_directory;
 	PGFunction	func;
 	StringInfoData	full_log_filename;
-	text		lfn;	
+	text		*lfn;	
 	text		*result;
 	int		char_count;
 	int		line_count;
@@ -82,7 +82,6 @@ static Datum pg_log_internal(char *filename)
 	 *  read <filename> which must be in PG log directory
 	 */	
 	log_directory = GetConfigOption("log_directory", true, false);
-	log_filename = GetConfigOption("log_filename", true, false);
 
 	initStringInfo(&full_log_filename);
 	appendStringInfo(&full_log_filename, "./");
@@ -90,18 +89,13 @@ static Datum pg_log_internal(char *filename)
 	appendStringInfo(&full_log_filename, "/");
 	appendStringInfoString(&full_log_filename, filename);
 
+	lfn = (text *) palloc(full_log_filename.len + VARHDRSZ);
 	func = pg_read_file_v2;
-	memcpy(VARDATA(&lfn), full_log_filename.data, full_log_filename.len);
-	SET_VARSIZE(&lfn, sizeof(text) + full_log_filename.len);
+	memcpy(VARDATA(lfn), full_log_filename.data, full_log_filename.len);
+	SET_VARSIZE(lfn, full_log_filename.len + VARHDRSZ);
 	
-	result =  (text *)DirectFunctionCall1Coll(func, /*C.uft8 */ 12546, (Datum)&lfn);
+	result =  (text *)DirectFunctionCall1Coll(func, /*C.uft8 */ 12546, (Datum)lfn);
 	
-	elog(INFO, "pg_log: pg_read_file_v2 returned %d bytes", VARSIZE(result));
-	elog(DEBUG1, "pg_log: START result dump ...");
-	elog(DEBUG1, "pg_log: ***************************************************");
-	elog(DEBUG1, "pg_log: %s", VARDATA(result));
-	elog(DEBUG1, "pg_log: ***************************************************");
-	elog(DEBUG1, "pg_log: ... result dump END.");
 
 	/*
 	 * check returned data
@@ -123,25 +117,49 @@ static Datum pg_log_internal(char *filename)
 
 	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", char_count, line_count, max_line_size);
 
+	l_result = result;
+
 	return (Datum)0;
 
 }
 
-static Datum pg_build_result(FunctionCallInfo fcinfo)
+Datum pg_log(PG_FUNCTION_ARGS)
 {
+
+   return (pg_log_internal(fcinfo));
+}
+
+
+static Datum pg_log_internal(FunctionCallInfo fcinfo)
+{
+
+
 	ReturnSetInfo 	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	bool		randomAccess;
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
 	AttInMetadata	 *attinmeta;
 	MemoryContext 	oldcontext;
-	bool		result_processed = false;
-	int		l;
+
+	char		*log_filename = NULL;
+	int		line_count;
+	int		char_count;
 	char		*p;
+	int		i;
 	int		c;
 
-	text		*result;
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("materialize mode required, but it is not allowed in this context")));
 
+	log_filename = GetConfigOption("log_filename", true, false);
+	pg_read_internal(log_filename);
 
 	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
@@ -163,35 +181,27 @@ static Datum pg_build_result(FunctionCallInfo fcinfo)
 
 	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-	l = 0;	
-	c = 0;
-	p = VARDATA(result);
-	while (result_processed == false)	
-	{
+	for (char_count = 0, p = VARDATA(l_result), line_count = 0, i = 0;
+             char_count < VARSIZE(l_result);
+             char_count++, i++)
+        {
+		char		buf_v1[200];
 		char 		*values[1];
 		HeapTuple	tuple;
-		char		buf_v1[300];
-		int		i;
 
-		for (i = 0;  *p != '\n'; i++, p++)
-		{
-			buf_v1[i] = *p;
-			l++;
-		}
-		p++;
-		buf_v1[++i] = '\n';
-		buf_v1[++i] = '\0';
-		l++;
-		c++;
-		
-		values[0] = buf_v1;
-		tuple = BuildTupleFromCStrings(attinmeta, values);
-		tuplestore_puttuple(tupstore, tuple);
+                c = *(p + char_count);
+		buf_v1[i] = c;
 
-		if ( l > VARSIZE(result))
-			result_processed = true;
+                if (c == '\n')
+                {
+			line_count++;
+			i = 0;
 
-	}
+			values[0] = buf_v1;
+			tuple = BuildTupleFromCStrings(attinmeta, values);
+			tuplestore_puttuple(tupstore, tuple);
+                }
+        }
 
 	return (Datum)0;
 
