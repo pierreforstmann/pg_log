@@ -1,5 +1,5 @@
 # pg_log
-PostgreSQL extension to display log 
+PostgreSQL extension to display log with a SQL function
 
 
 # Installation
