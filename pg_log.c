@@ -26,7 +26,10 @@ void		_PG_init(void);
 void		_PG_fini(void);
 
 PG_FUNCTION_INFO_V1(pg_log);
-static Datum pg_log_internal(FunctionCallInfo fcinfo);
+static Datum pg_log_internal(char *filename);
+static Datum pg_build_result(FunctionCallInfo fcinfo);
+
+static text *l_result;
 
 /*
  * Module load callback
@@ -52,30 +55,32 @@ _PG_fini(void)
 
 Datum pg_log(PG_FUNCTION_ARGS)
 {
-   return (pg_log_internal(fcinfo));
+   char *filename;
+
+   filename = PG_GETARG_CSTRING(0); 
+   return (pg_log_internal(filename));
 }
 
-static Datum pg_log_internal(FunctionCallInfo fcinfo)
+static Datum pg_log_internal(char *filename)
 {
 
-	ReturnSetInfo 	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	bool		randomAccess;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	AttInMetadata	 *attinmeta;
-	MemoryContext 	oldcontext;
-	text		lfn;	
-	PGFunction	func;
 	const char	*log_filename;	
 	const char	*log_directory;
+	PGFunction	func;
 	StringInfoData	full_log_filename;
+	text		lfn;	
 	text		*result;
-	bool		result_processed = false;
-	int		l;
+	int		char_count;
+	int		line_count;
 	char		*p;
-	int		c;
+	char		c;
+	int 		i;
+	int		max_line_size;
 
-	
+
+	/*
+	 *  read <filename> which must be in PG log directory
+	 */	
 	log_directory = GetConfigOption("log_directory", true, false);
 	log_filename = GetConfigOption("log_filename", true, false);
 
@@ -83,14 +88,60 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	appendStringInfo(&full_log_filename, "./");
 	appendStringInfoString(&full_log_filename, log_directory);
 	appendStringInfo(&full_log_filename, "/");
-	appendStringInfoString(&full_log_filename, log_filename);
+	appendStringInfoString(&full_log_filename, filename);
 
 	func = pg_read_file_v2;
 	memcpy(VARDATA(&lfn), full_log_filename.data, full_log_filename.len);
 	SET_VARSIZE(&lfn, sizeof(text) + full_log_filename.len);
-	result =  (text *)DirectFunctionCall1Coll(func, 100, (Datum)&lfn);
-
+	
+	result =  (text *)DirectFunctionCall1Coll(func, /*C.uft8 */ 12546, (Datum)&lfn);
+	
 	elog(INFO, "pg_log: pg_read_file_v2 returned %d bytes", VARSIZE(result));
+	elog(DEBUG1, "pg_log: START result dump ...");
+	elog(DEBUG1, "pg_log: ***************************************************");
+	elog(DEBUG1, "pg_log: %s", VARDATA(result));
+	elog(DEBUG1, "pg_log: ***************************************************");
+	elog(DEBUG1, "pg_log: ... result dump END.");
+
+	/*
+	 * check returned data
+	 */
+
+	for (char_count = 0, p = VARDATA(result), line_count = 0, i = 0, max_line_size = 0;
+	     char_count < VARSIZE(result); 
+	     char_count++, i++)
+	{
+		c = *(p + char_count);
+		if (c == '\n')
+		{
+			  line_count++;
+			  if (i > max_line_size)
+				  max_line_size = i;
+			  i = 0;
+		}
+	}		
+
+	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", char_count, line_count, max_line_size);
+
+	return (Datum)0;
+
+}
+
+static Datum pg_build_result(FunctionCallInfo fcinfo)
+{
+	ReturnSetInfo 	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	bool		randomAccess;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	AttInMetadata	 *attinmeta;
+	MemoryContext 	oldcontext;
+	bool		result_processed = false;
+	int		l;
+	char		*p;
+	int		c;
+
+	text		*result;
+
 
 	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
@@ -132,7 +183,7 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 		buf_v1[++i] = '\0';
 		l++;
 		c++;
-
+		
 		values[0] = buf_v1;
 		tuple = BuildTupleFromCStrings(attinmeta, values);
 		tuplestore_puttuple(tupstore, tuple);
@@ -141,8 +192,6 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 			result_processed = true;
 
 	}
-
-	elog(INFO, "pg_log: returns %d rows", c);
 
 	return (Datum)0;
 
