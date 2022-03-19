@@ -194,6 +194,8 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 
                 if (c == '\n')
                 {
+			i++;
+			buf_v1[i] = '\0';
 			line_count++;
 			i = 0;
 
