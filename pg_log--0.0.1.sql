@@ -8,7 +8,7 @@ CREATE FUNCTION pg_read(cstring) RETURNS void
  AS 'pg_log.so', 'pg_read'
  LANGUAGE C STRICT;
 --
-CREATE FUNCTION pg_log() RETURNS setof record 
+CREATE FUNCTION pg_log(OUT line integer, OUT message text) RETURNS SETOF record 
  AS 'pg_log.so', 'pg_log'
  LANGUAGE C STRICT;
 --

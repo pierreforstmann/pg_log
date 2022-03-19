@@ -164,12 +164,12 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	/* The tupdesc and tuplestore must be created in ecxt_per_query_memory */
 	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
 #if PG_VERSION_NUM <= 120000
-	tupdesc = CreateTemplateTupleDesc(1, false);
+	tupdesc = CreateTemplateTupleDesc(2, false);
 #else
-	tupdesc = CreateTemplateTupleDesc(1);
+	tupdesc = CreateTemplateTupleDesc(2);
 #endif
-	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "message",
-					   TEXTOID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 1, "lineno", INT4OID, -1, 0);
+	TupleDescInitEntry(tupdesc, (AttrNumber) 2, "message", TEXTOID, -1, 0);
 
 	randomAccess = (rsinfo->allowedModes & SFRM_Materialize_Random) != 0;
 	tupstore = tuplestore_begin_heap(randomAccess, false, work_mem);
@@ -185,20 +185,23 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
              char_count < VARSIZE(l_result);
              char_count++, i++)
         {
-		char		buf_v1[200];
-		char 		*values[1];
+		char		buf_v1[20];
+		char		buf_v2[200];
+		char 		*values[2];
 		HeapTuple	tuple;
 
                 c = *(p + char_count);
-		buf_v1[i] = c;
+		buf_v2[i] = c;
 
                 if (c == '\n')
                 {
-			buf_v1[i] = '\0';
+			sprintf(buf_v1, "%d", line_count);	
+			buf_v2[i] = '\0';
 			line_count++;
 			i = -1;
 
 			values[0] = buf_v1;
+			values[1] = buf_v2;
 			tuple = BuildTupleFromCStrings(attinmeta, values);
 			tuplestore_puttuple(tupstore, tuple);
                 }
