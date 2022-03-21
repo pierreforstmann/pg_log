@@ -3,6 +3,16 @@
 --
 DROP FUNCTION IF EXISTS pg_log();
 DROP FUNCTION IF EXISTS pg_read();
+DROP FUNCTION IF EXISTS pg_lfgn();
+DROP FUNCTION IF EXISTS pg_get_logname();
+---
+CREATE FUNCTION pg_get_logname() RETURNS cstring 
+ AS 'pg_log.so', 'pg_get_logname'
+ LANGUAGE C STRICT;
+--
+CREATE FUNCTION pg_lfgn() RETURNS cstring 
+ AS 'pg_log.so', 'pg_lfgn'
+ LANGUAGE C STRICT;
 ---
 CREATE FUNCTION pg_read(cstring) RETURNS void 
  AS 'pg_log.so', 'pg_read'

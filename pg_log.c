@@ -17,6 +17,9 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "pgtime.h"
+#include "utils/timestamp.h"
+#include "executor/spi.h"
 
 #define PG_LOG_MAX_LINE_SIZE	200
 
@@ -27,8 +30,12 @@ PG_MODULE_MAGIC;
 void		_PG_init(void);
 void		_PG_fini(void);
 
+PG_FUNCTION_INFO_V1(pg_get_logname);
+PG_FUNCTION_INFO_V1(pg_lfgn);
 PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
+static char *pg_get_logname_internal(FunctionCallInfo fcinfo);
+static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
 static Datum pg_read_internal(char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
 
@@ -54,6 +61,100 @@ _PG_fini(void)
 	elog(DEBUG5, "pg_log:_PG_fini():entry");
 
 	elog(DEBUG5, "pg_log:_PG_fini():exit");
+}
+
+
+Datum	pg_get_logname(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(pg_get_logname_internal(fcinfo));
+}
+
+static char *pg_get_logname_internal(FunctionCallInfo fcinfo)
+{
+	/*
+	 * get last modified file in <log_directory>
+	 */
+
+	ReturnSetInfo   *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	StringInfoData 	buf_select;
+	char		*filename;
+	char		*returned_filename;
+	int		ret_code;
+	int		rows_number;
+	MemoryContext   oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);	
+	SPI_connect();	
+	
+	initStringInfo(&buf_select);
+	appendStringInfo(&buf_select, "select name  from pg_ls_logdir() where modification = (select max(modification) from pg_ls_logdir())");
+
+	ret_code = SPI_execute(buf_select.data, false, 0);
+	rows_number = SPI_processed;
+
+	if (ret_code != SPI_OK_SELECT)
+		elog(ERROR, "pg_log: SELECT FROM pg_ls_logdir() failed");
+	if (rows_number == 0)
+		elog(ERROR, "pg_log: SELECT FROM pg_ls_logdir() returned no data");
+	else if (rows_number != 1)
+		elog(ERROR, "pg_log: SELECT FROM pg_ls_logdir() returned more than 1 row");
+
+	filename = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
+	if (filename == NULL)	
+		elog(ERROR, "pg_log : SELECT FROM pg_ls_logdir returned NULL");
+
+	/*
+	 * must allocate memory that must not freed by SPI_finish (and filled with '\x7F')
+	 */
+	MemoryContextSwitchTo(oldcontext);
+	returned_filename  = palloc(strlen(filename) + 1);
+	strcpy(returned_filename, filename);
+
+	SPI_finish();	
+	
+	return returned_filename;
+
+}
+
+/*
+ * from syslogger.c: logfile_getname
+ */
+static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix)
+{
+     char       *filename;
+     int         len;
+
+     char	*log_filename;
+     char	*log_directory;
+
+     log_directory = GetConfigOption("log_directory", true, false);
+     log_filename = GetConfigOption("log_filename", true, false);
+
+     filename = palloc(MAXPGPATH);
+
+     snprintf(filename, MAXPGPATH, "%s/", log_directory);
+
+     len = strlen(filename);
+
+     /* treat Log_filename as a strftime pattern */
+     pg_strftime(filename + len, MAXPGPATH - len, log_filename,
+                 pg_localtime(&timestamp, log_timezone));
+
+     if (suffix != NULL)
+     {
+         len = strlen(filename);
+         if (len > 4 && (strcmp(filename + (len - 4), ".log") == 0))
+             len -= 4;
+         strlcpy(filename + len, suffix, MAXPGPATH - len);
+     }
+
+     return filename;
+}
+
+Datum pg_lfgn(PG_FUNCTION_ARGS)
+{
+	pg_time_t logger_file_time = 0;
+	PG_RETURN_CSTRING(pg_lfgn_internal(logger_file_time, NULL));
 }
 
 Datum pg_read(PG_FUNCTION_ARGS)
