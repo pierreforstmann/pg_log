@@ -18,6 +18,8 @@
 #include "funcapi.h"
 #include "miscadmin.h"
 
+#define PG_LOG_MAX_LINE_SIZE	200
+
 PG_MODULE_MAGIC;
 
 /*---- Function declarations ----*/
@@ -186,12 +188,15 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
              char_count++, i++)
         {
 		char		buf_v1[20];
-		char		buf_v2[200];
+		char		buf_v2[PG_LOG_MAX_LINE_SIZE];
 		char 		*values[2];
 		HeapTuple	tuple;
 
                 c = *(p + char_count);
 		buf_v2[i] = c;
+		
+		if ( i > PG_LOG_MAX_LINE_SIZE - 1)
+			elog(ERROR, "pg_log: log line %d larger than %d", line_count + 1, PG_LOG_MAX_LINE_SIZE);
 
                 if (c == '\n')
                 {
