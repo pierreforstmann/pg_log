@@ -75,17 +75,15 @@ static char *pg_get_logname_internal(FunctionCallInfo fcinfo)
 	 * get last modified file in <log_directory>
 	 */
 
-	ReturnSetInfo   *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	StringInfoData 	buf_select;
-	char		*filename;
 	char		*returned_filename;
+	char		*filename;
 	int		ret_code;
 	int		rows_number;
-	MemoryContext   oldcontext;
 
-	oldcontext = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);	
+
 	SPI_connect();	
-	
+
 	initStringInfo(&buf_select);
 	appendStringInfo(&buf_select, "select name  from pg_ls_logdir() where modification = (select max(modification) from pg_ls_logdir())");
 
@@ -104,10 +102,9 @@ static char *pg_get_logname_internal(FunctionCallInfo fcinfo)
 		elog(ERROR, "pg_log : SELECT FROM pg_ls_logdir returned NULL");
 
 	/*
-	 * must allocate memory that must not freed by SPI_finish (and filled with '\x7F')
+	 * SPI_getvalue is using palloc and SPI_finish will deallocate it
 	 */
-	MemoryContextSwitchTo(oldcontext);
-	returned_filename  = palloc(strlen(filename) + 1);
+	returned_filename = SPI_palloc(strlen(filename) + 1);
 	strcpy(returned_filename, filename);
 
 	SPI_finish();	
