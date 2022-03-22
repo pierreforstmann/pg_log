@@ -34,7 +34,7 @@ PG_FUNCTION_INFO_V1(pg_get_logname);
 PG_FUNCTION_INFO_V1(pg_lfgn);
 PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
-static char *pg_get_logname_internal(FunctionCallInfo fcinfo);
+static char *pg_get_logname_internal();
 static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
 static Datum pg_read_internal(char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
@@ -66,10 +66,10 @@ _PG_fini(void)
 
 Datum	pg_get_logname(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_CSTRING(pg_get_logname_internal(fcinfo));
+	PG_RETURN_CSTRING(pg_get_logname_internal());
 }
 
-static char *pg_get_logname_internal(FunctionCallInfo fcinfo)
+static char *pg_get_logname_internal()
 {
 	/*
 	 * get last modified file in <log_directory>
@@ -164,10 +164,11 @@ Datum pg_read(PG_FUNCTION_ARGS)
 
 static Datum pg_read_internal(char *filename)
 {
-
-	const char	*log_directory;
+	
+	char		*log_filename;
+	char		*log_directory;
+	char		*full_log_filename;
 	PGFunction	func;
-	StringInfoData	full_log_filename;
 	text		*lfn;	
 	text		*result;
 	int		char_count;
@@ -178,25 +179,20 @@ static Datum pg_read_internal(char *filename)
 	int		max_line_size;
 
 
-	/*
-	 *  read <filename> which must be in PG log directory
-	 */	
-	log_directory = GetConfigOption("log_directory", true, false);
-
-	initStringInfo(&full_log_filename);
-	appendStringInfo(&full_log_filename, "./");
-	appendStringInfoString(&full_log_filename, log_directory);
-	appendStringInfo(&full_log_filename, "/");
-	appendStringInfoString(&full_log_filename, filename);
-
-	lfn = (text *) palloc(full_log_filename.len + VARHDRSZ);
+	log_filename = pg_get_logname_internal();
+     	log_directory = GetConfigOption("log_directory", true, false);
+	full_log_filename = palloc(strlen(log_filename) + strlen(log_directory) + 2);
+	strcpy(full_log_filename, log_directory); 
+	strcat(full_log_filename, "/");
+	strcat(full_log_filename, log_filename);
+	
+	lfn = (text *) palloc(strlen(full_log_filename) + VARHDRSZ);
 	func = pg_read_file_v2;
-	memcpy(VARDATA(lfn), full_log_filename.data, full_log_filename.len);
-	SET_VARSIZE(lfn, full_log_filename.len + VARHDRSZ);
+	memcpy(VARDATA(lfn), full_log_filename, strlen(full_log_filename));
+	SET_VARSIZE(lfn, strlen(full_log_filename) + VARHDRSZ);
 	
 	result =  (text *)DirectFunctionCall1Coll(func, /*C.uft8 */ 12546, (Datum)lfn);
 	
-
 	/*
 	 * check returned data
 	 */
