@@ -21,6 +21,10 @@
 #include "utils/timestamp.h"
 #include "executor/spi.h"
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #define PG_LOG_MAX_LINE_SIZE	200
 
 PG_MODULE_MAGIC;
@@ -171,6 +175,10 @@ static Datum pg_read_internal(char *filename)
 	char		*full_log_filename;
 	PGFunction	func;
 	text		*lfn;	
+	int64		offset;
+	int64		length;
+	struct stat	stat_buf;
+	int		rc;
 	text		*result;
 	int		char_count;
 	int		line_count;
@@ -188,10 +196,23 @@ static Datum pg_read_internal(char *filename)
 	strcat(full_log_filename, log_filename);
 	
 	lfn = (text *) palloc(strlen(full_log_filename) + VARHDRSZ);
-	func = pg_read_file_v2;
 	memcpy(VARDATA(lfn), full_log_filename, strlen(full_log_filename));
 	SET_VARSIZE(lfn, strlen(full_log_filename) + VARHDRSZ);
-	result =  (text *)DirectFunctionCall1(func, (Datum)lfn);
+
+	rc = stat(full_log_filename, &stat_buf);
+	if (rc != 0)
+		elog(ERROR, "pg_log: stat failed on %s", full_log_filename);
+
+	elog(INFO, "pg_log: %s has %ld bytes", full_log_filename, stat_buf.st_size); 
+
+	/*
+	 * by default read only the last 10%
+	 */
+	offset = stat_buf.st_size * 0.9;
+	length = stat_buf.st_size; 
+
+	func = pg_read_file_v2;
+	result =  (text *)DirectFunctionCall3(func, (Datum)lfn, (Datum)offset, (Datum)length);
 
 	/*
 	 * check returned data
