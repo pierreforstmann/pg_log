@@ -186,6 +186,8 @@ static Datum pg_read_internal(char *filename)
 	char		c;
 	int 		i;
 	int		max_line_size;
+	int		first_newline_position = 0;
+	text		*new_result;
 
 
 	log_filename = pg_get_logname_internal();
@@ -209,7 +211,7 @@ static Datum pg_read_internal(char *filename)
 	 * by default read only the last 10%
 	 */
 	offset = stat_buf.st_size * 0.9;
-	length = stat_buf.st_size; 
+	length = stat_buf.st_size * 0.11; 
 
 	func = pg_read_file_v2;
 	result =  (text *)DirectFunctionCall3(func, (Datum)lfn, (Datum)offset, (Datum)length);
@@ -225,6 +227,8 @@ static Datum pg_read_internal(char *filename)
 		c = *(p + char_count);
 		if (c == '\n')
 		{
+			  if (first_newline_position == 0)
+				  first_newline_position = i;
 			  line_count++;
 			  if (i > max_line_size)
 				  max_line_size = i;
@@ -234,7 +238,16 @@ static Datum pg_read_internal(char *filename)
 
 	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", char_count, line_count, max_line_size);
 
-	l_result = result;
+	/*
+	 * make sure first line is a full line 
+	 */
+	new_result = palloc(VARSIZE_ANY_EXHDR(result) + VARHDRSZ);
+	SET_VARSIZE(new_result, VARSIZE_ANY_EXHDR(result) + VARHDRSZ - first_newline_position - 1);
+	memcpy((char *)VARDATA(new_result), 
+		(char *)VARDATA(result) + first_newline_position + 1, 
+		VARSIZE_ANY_EXHDR(result) - first_newline_position - 1);
+
+	l_result = new_result;
 
 	return (Datum)0;
 
