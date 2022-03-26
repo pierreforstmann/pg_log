@@ -64,11 +64,6 @@ _PG_fini(void)
 }
 
 
-Datum	pg_get_logname(PG_FUNCTION_ARGS)
-{
-	PG_RETURN_CSTRING(pg_get_logname_internal());
-}
-
 static char *pg_get_logname_internal()
 {
 	/*
@@ -112,6 +107,12 @@ static char *pg_get_logname_internal()
 	return returned_filename;
 
 }
+
+Datum	pg_get_logname(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_CSTRING(pg_get_logname_internal());
+}
+
 
 /*
  * from syslogger.c: logfile_getname
@@ -190,9 +191,8 @@ static Datum pg_read_internal(char *filename)
 	func = pg_read_file_v2;
 	memcpy(VARDATA(lfn), full_log_filename, strlen(full_log_filename));
 	SET_VARSIZE(lfn, strlen(full_log_filename) + VARHDRSZ);
-	
-	result =  (text *)DirectFunctionCall1Coll(func, /*C.uft8 */ 12546, (Datum)lfn);
-	
+	result =  (text *)DirectFunctionCall1(func, (Datum)lfn);
+
 	/*
 	 * check returned data
 	 */
