@@ -7,6 +7,7 @@
  * For license terms, see the LICENSE file.
  *          
  * Copyright (c) 2022, Pierre Forstmann.
+ * Portions Copyright (c) 1996-2022, PostgreSQL Global Development Group 
  *            
  *-------------------------------------------------------------------------
 */
@@ -43,7 +44,10 @@ static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
 static Datum pg_read_internal(char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
 
+/*---- Variable declarations ----*/
+
 static text *l_result;
+static double pg_log_fraction;
 
 /*
  * Module load callback
@@ -52,6 +56,21 @@ void
 _PG_init(void)
 {
 	elog(DEBUG5, "pg_log:_PG_init():entry");
+
+
+	/* get the configuration */
+	DefineCustomRealVariable("pg_log.fraction",
+				"log fraction to be retrieved",
+				NULL,
+				&pg_log_fraction,
+				0.1,
+				0.1,
+				1.0,
+				PGC_USERSET,
+				0,
+				NULL,
+				NULL,
+				NULL);
 
 	elog(DEBUG5, "pg_log:_PG_init():exit");
 }
@@ -210,8 +229,8 @@ static Datum pg_read_internal(char *filename)
 	/*
 	 * by default read only the last 10%
 	 */
-	offset = stat_buf.st_size * 0.9;
-	length = stat_buf.st_size * 0.11; 
+	offset = stat_buf.st_size * ( 1 - pg_log_fraction);
+	length = stat_buf.st_size * pg_log_fraction; 
 
 	func = pg_read_file_v2;
 	result =  (text *)DirectFunctionCall3(func, (Datum)lfn, (Datum)offset, (Datum)length);
