@@ -1,10 +1,19 @@
 --
 -- pg_log--0.0.1.sql
 --
+DROP SCHEMA IF EXISTS pglog;
 DROP FUNCTION IF EXISTS pg_log();
 DROP FUNCTION IF EXISTS pg_read();
 DROP FUNCTION IF EXISTS pg_lfgn();
 DROP FUNCTION IF EXISTS pg_get_logname();
+DROP FUNCTION IF EXISTS pg_refresh_log();
+--
+--
+CREATE SCHEMA pglog;
+--
+CREATE TABLE pglog.log(id numeric, message text);
+--
+CREATE VIEW log AS SELECT * FROM pglog.log;
 ---
 CREATE FUNCTION pg_get_logname() RETURNS cstring 
  AS 'pg_log.so', 'pg_get_logname'
@@ -22,3 +31,6 @@ CREATE FUNCTION pg_log(OUT line integer, OUT message text) RETURNS SETOF record
  AS 'pg_log.so', 'pg_log'
  LANGUAGE C STRICT;
 --
+CREATE FUNCTION pg_refresh_log() RETURNS void 
+ AS 'pg_log.so', 'pg_refresh_log'
+ LANGUAGE C STRICT;

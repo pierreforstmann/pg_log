@@ -26,6 +26,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "utils/builtins.h"
+
 #define PG_LOG_MAX_LINE_SIZE	200
 
 PG_MODULE_MAGIC;
@@ -39,14 +41,16 @@ PG_FUNCTION_INFO_V1(pg_get_logname);
 PG_FUNCTION_INFO_V1(pg_lfgn);
 PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
+PG_FUNCTION_INFO_V1(pg_refresh_log);
 static char *pg_get_logname_internal();
 static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
 static Datum pg_read_internal(char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
+static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo);
 
 /*---- Variable declarations ----*/
 
-static text *l_result;
+static text *g_result;
 static double pg_log_fraction;
 
 /*
@@ -56,7 +60,6 @@ void
 _PG_init(void)
 {
 	elog(DEBUG5, "pg_log:_PG_init():entry");
-
 
 	/* get the configuration */
 	DefineCustomRealVariable("pg_log.fraction",
@@ -266,7 +269,7 @@ static Datum pg_read_internal(char *filename)
 		(char *)VARDATA(result) + first_newline_position + 1, 
 		VARSIZE_ANY_EXHDR(result) - first_newline_position - 1);
 
-	l_result = new_result;
+	g_result = new_result;
 
 	return (Datum)0;
 
@@ -330,8 +333,8 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 
 	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-	for (char_count = 0, p = VARDATA(l_result), line_count = 0, i = 0;
-             char_count < VARSIZE(l_result);
+	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
+             char_count < VARSIZE(g_result);
              char_count++, i++)
         {
 		char		buf_v1[20];
@@ -362,3 +365,74 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	return (Datum)0;
 
 }
+
+
+Datum pg_refresh_log(PG_FUNCTION_ARGS)
+{
+
+   return (pg_refresh_log_internal(fcinfo));
+
+}
+
+
+static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
+{
+
+	char            *log_filename = NULL;
+	int             line_count;
+        int             char_count;
+        char            *p;
+        int             i;
+        int             c;
+	StringInfoData	buf_insert;
+	SPIPlanPtr 	plan_ptr;
+	Oid argtypes[2] = { INT4OID, TEXTOID };
+	Datum		values[2];
+	int		ret_code;
+
+        char            buf_v2[PG_LOG_MAX_LINE_SIZE];
+
+	log_filename = GetConfigOption("log_filename", true, false);
+        pg_read_internal(log_filename);
+
+	initStringInfo(&buf_insert);
+        appendStringInfo(&buf_insert, "insert into pglog.log(id, message) values ($1, $2)");
+
+	SPI_connect();
+
+	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
+
+	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
+             char_count < VARSIZE(g_result);
+             char_count++, i++)
+        {
+
+                c = *(p + char_count);
+                buf_v2[i] = c;
+
+                if ( i > PG_LOG_MAX_LINE_SIZE - 1)
+                        elog(ERROR, "pg_log: log line %d larger than %d", line_count + 1, PG_LOG_MAX_LINE_SIZE);
+
+                if (c == '\n')
+                {
+                        buf_v2[i] = '\0';
+                        line_count++;
+                        i = -1;
+
+			values[0] = Int32GetDatum(line_count);
+			values[1] = CStringGetTextDatum(buf_v2);
+			ret_code = SPI_execute_plan(plan_ptr, values, NULL, false, 0);	
+
+			if (ret_code != SPI_OK_INSERT)
+				 elog(ERROR, "INSERT INTO pglog.log failed");
+        		if (SPI_processed != 1)
+				 elog(ERROR, "INSERT INTO pglog.log did not process 1 row");
+
+                }
+        }
+
+	SPI_finish();
+
+	return (Datum)0;
+}
+
