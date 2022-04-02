@@ -400,6 +400,8 @@ static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
 
 	SPI_connect();
 
+	SPI_execute("truncate table pglog.log", false, 0);
+
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
 
 	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
