@@ -52,6 +52,7 @@ static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo);
 
 static text *g_result;
 static double pg_log_fraction;
+static int pg_log_naptime;
 
 /*
  * Module load callback
@@ -66,10 +67,23 @@ _PG_init(void)
 				"log fraction to be retrieved",
 				NULL,
 				&pg_log_fraction,
-				0.1,
-				0.1,
+				0.01,
+				0.001,
 				1.0,
 				PGC_USERSET,
+				0,
+				NULL,
+				NULL,
+				NULL);
+
+	DefineCustomIntVariable("pg_log.naptime",
+				"duration between each log table refresh (in seconds)",
+				NULL,
+				&pg_log_naptime,
+				30,
+				0.1,
+				INT_MAX,
+				PGC_SIGHUP,
 				0,
 				NULL,
 				NULL,
