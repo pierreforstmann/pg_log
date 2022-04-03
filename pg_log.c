@@ -13,6 +13,17 @@
 */
 #include "postgres.h"
 
+/* These are always necessary for a bgworker */
+#include "miscadmin.h"
+#include "postmaster/bgworker.h"
+#include "storage/ipc.h"
+#include "storage/latch.h"
+#include "storage/lwlock.h"
+#include "storage/proc.h"
+#include "storage/shmem.h"
+
+/* these headers are used by this particular worker's code */
+
 #include "utils/guc.h"
 #include "utils/fmgrprotos.h"
 #include "fmgr.h"
@@ -21,6 +32,9 @@
 #include "pgtime.h"
 #include "utils/timestamp.h"
 #include "executor/spi.h"
+#include "access/xact.h"
+#include "utils/snapmgr.h"
+#include "pgstat.h"
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -42,6 +56,7 @@ PG_FUNCTION_INFO_V1(pg_lfgn);
 PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
 PG_FUNCTION_INFO_V1(pg_refresh_log);
+PG_FUNCTION_INFO_V1(pg_log_main);
 static char *pg_get_logname_internal();
 static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
 static Datum pg_read_internal(char *filename);
@@ -54,12 +69,54 @@ static text *g_result;
 static double pg_log_fraction;
 static int pg_log_naptime;
 
+
+/*
+ * flags set by signal handlers
+ * */
+static volatile sig_atomic_t got_sighup = false;
+static volatile sig_atomic_t got_sigterm = false;
+
+
+/*
+ * Signal handler for SIGTERM
+ *	Set a flag to let the main loop to terminate, and set our latch to wake	it up.
+ */
+static void
+pg_log_sigterm(SIGNAL_ARGS)
+{
+	int	save_errno = errno;
+
+	got_sigterm = true;
+	SetLatch(MyLatch);
+
+	errno = save_errno;
+}
+
+/*
+ * Signal handler for SIGHUP
+ * 	Set a flag to tell the main loop to reread the config file, and set our latch to wake it up.
+ */
+static void
+pg_log_sighup(SIGNAL_ARGS)
+{
+	int	save_errno = errno;
+
+	got_sighup = true;
+	SetLatch(MyLatch);
+
+	errno = save_errno;
+}
+
+
 /*
  * Module load callback
  */
 void
 _PG_init(void)
 {
+
+	BackgroundWorker worker;
+
 	elog(DEBUG5, "pg_log:_PG_init():entry");
 
 	/* get the configuration */
@@ -88,6 +145,33 @@ _PG_init(void)
 				NULL,
 				NULL,
 				NULL);
+
+	/* set up common data for all our workers */
+	memset(&worker, 0, sizeof(worker));
+	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
+		BGWORKER_BACKEND_DATABASE_CONNECTION;
+	worker.bgw_start_time = BgWorkerStart_RecoveryFinished;
+	worker.bgw_restart_time = pg_log_naptime;
+	sprintf(worker.bgw_library_name, "pg_log");
+	sprintf(worker.bgw_function_name, "pg_log_main");
+	worker.bgw_notify_pid = 0;
+
+	snprintf(worker.bgw_name, BGW_MAXLEN, "pg_log_worker");
+#if PG_VERSION_NUM >= 110000
+	snprintf(worker.bgw_type, BGW_MAXLEN, "pg_log");
+#endif
+	worker.bgw_main_arg = 0;
+
+	RegisterBackgroundWorker(&worker);
+
+	elog(LOG, "%s started with pg_log.naptime=%d seconds", 
+                  worker.bgw_name,
+                  pg_log_naptime);
+
+	elog(LOG, "%s started with pg_log.fraction=%f", 
+                  worker.bgw_name,
+                  pg_log_fraction);
+
 
 	elog(DEBUG5, "pg_log:_PG_init():exit");
 }
@@ -452,3 +536,97 @@ static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
 	return (Datum)0;
 }
 
+Datum
+pg_log_main(PG_FUNCTION_ARGS)
+{
+	/*
+	 *
+	 * code structure from src/test/modules/worker_spi/worker_spi.c
+	 *
+	 */
+
+	/* Establish signal handlers before unblocking signals. */
+	pqsignal(SIGHUP, pg_log_sighup);
+	pqsignal(SIGTERM, pg_log_sigterm);
+
+	/* We're now ready to receive signals */
+	BackgroundWorkerUnblockSignals();
+
+	/* Connect to our database */
+#if PG_VERSION_NUM >=110000
+	BackgroundWorkerInitializeConnection("pg_log", NULL, 0);
+#else
+	BackgroundWorkerInitializeConnection("pg_log", NULL);
+#endif
+	elog(LOG, "%s initialized", MyBgworkerEntry->bgw_name);
+
+	/*
+	 * Main loop: do this until the SIGTERM handler tells us to terminate
+	 */
+
+	while (!got_sigterm)
+	{
+		int	rc;
+
+		/*
+		 * Background workers mustn't call usleep() or any direct equivalent:
+		 * instead, they may wait on their process latch, which sleeps as
+		 * necessary, but is awakened if postmaster dies.  That way the
+		 * background process goes away immediately in an emergency.
+		 */
+#if PG_VERSION_NUM >= 100000
+		rc = WaitLatch(MyLatch,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   pg_log_naptime * 1000L,
+					   PG_WAIT_EXTENSION);
+#else
+		rc = WaitLatch(MyLatch,
+					   WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
+					   pg_log_naptime * 1000L);
+#endif
+		ResetLatch(MyLatch);
+
+		/* emergency bailout if postmaster has died */
+		if (rc & WL_POSTMASTER_DEATH)
+			proc_exit(1);
+
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * In case of a SIGHUP, just reload the configuration.
+		 */
+		if (got_sighup)
+		{
+			got_sighup = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+
+		/*
+		 * Start a transaction on which we can run queries.  Note that each
+		 * StartTransactionCommand() call should be preceded by a
+		 * SetCurrentStatementStartTimestamp() call, which sets both the time
+		 * for the statement we're about the run, and also the transaction
+		 * start time.  Also, each other query sent to SPI should probably be
+		 * preceded by SetCurrentStatementStartTimestamp(), so that statement
+		 * start time is always up to date.
+		 *
+		 * The SPI_connect() call lets us run queries through the SPI manager,
+		 * and the PushActiveSnapshot() call creates an "active" snapshot
+		 * which is necessary for queries to have MVCC data to work on.
+		 *
+		 * The pgstat_report_activity() call makes our activity visible
+		 * through the pgstat views.
+		 */
+		SetCurrentStatementStartTimestamp();
+		StartTransactionCommand();
+		PushActiveSnapshot(GetTransactionSnapshot());
+
+		pg_refresh_log_internal(fcinfo);
+
+		PopActiveSnapshot();
+		CommitTransactionCommand();
+
+	}
+
+	proc_exit(1);
+}
