@@ -28,7 +28,7 @@
 
 #include "utils/builtins.h"
 
-#define PG_LOG_MAX_LINE_SIZE	200
+#define PG_LOG_MAX_LINE_SIZE	1000
 
 PG_MODULE_MAGIC;
 
@@ -396,11 +396,11 @@ static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
         pg_read_internal(log_filename);
 
 	initStringInfo(&buf_insert);
-        appendStringInfo(&buf_insert, "insert into pglog.log(id, message) values ($1, $2)");
+        appendStringInfo(&buf_insert, "insert into pglog(id, message) values ($1, $2)");
 
 	SPI_connect();
 
-	SPI_execute("truncate table pglog.log", false, 0);
+	SPI_execute("truncate table pglog", false, 0);
 
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
 
@@ -426,9 +426,9 @@ static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
 			ret_code = SPI_execute_plan(plan_ptr, values, NULL, false, 0);	
 
 			if (ret_code != SPI_OK_INSERT)
-				 elog(ERROR, "INSERT INTO pglog.log failed");
+				 elog(ERROR, "INSERT INTO pglog failed");
         		if (SPI_processed != 1)
-				 elog(ERROR, "INSERT INTO pglog.log did not process 1 row");
+				 elog(ERROR, "INSERT INTO pglog did not process 1 row");
 
                 }
         }

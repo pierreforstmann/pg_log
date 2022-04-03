@@ -1,7 +1,10 @@
 --
 -- pg_log--0.0.1.sql
 --
-DROP SCHEMA IF EXISTS pglog;
+-- script must be run in database named pg_log
+--
+DROP TABLE IF EXISTS log;
+DROP VIEW IF EXISTS log;
 DROP FUNCTION IF EXISTS pg_log();
 DROP FUNCTION IF EXISTS pg_read();
 DROP FUNCTION IF EXISTS pg_lfgn();
@@ -9,11 +12,9 @@ DROP FUNCTION IF EXISTS pg_get_logname();
 DROP FUNCTION IF EXISTS pg_refresh_log();
 --
 --
-CREATE SCHEMA pglog;
+CREATE TABLE pglog(id numeric, message text);
 --
-CREATE TABLE pglog.log(id numeric, message text);
---
-CREATE VIEW log AS SELECT * FROM pglog.log;
+CREATE VIEW log AS SELECT * FROM pglog;
 ---
 CREATE FUNCTION pg_get_logname() RETURNS cstring 
  AS 'pg_log.so', 'pg_get_logname'
