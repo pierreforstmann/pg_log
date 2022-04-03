@@ -52,16 +52,14 @@ void		_PG_init(void);
 void		_PG_fini(void);
 
 PG_FUNCTION_INFO_V1(pg_get_logname);
-PG_FUNCTION_INFO_V1(pg_lfgn);
 PG_FUNCTION_INFO_V1(pg_read);
 PG_FUNCTION_INFO_V1(pg_log);
-PG_FUNCTION_INFO_V1(pg_refresh_log);
+PG_FUNCTION_INFO_V1(pg_log_refresh);
 PG_FUNCTION_INFO_V1(pg_log_main);
 static char *pg_get_logname_internal();
-static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix);
-static Datum pg_read_internal(char *filename);
+static Datum pg_read_internal(const char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
-static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo);
+static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo);
 
 /*---- Variable declarations ----*/
 
@@ -237,48 +235,6 @@ Datum	pg_get_logname(PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(pg_get_logname_internal());
 }
 
-
-/*
- * from syslogger.c: logfile_getname
- */
-static char *pg_lfgn_internal(pg_time_t timestamp, const char *suffix)
-{
-     char       *filename;
-     int         len;
-
-     char	*log_filename;
-     char	*log_directory;
-
-     log_directory = GetConfigOption("log_directory", true, false);
-     log_filename = GetConfigOption("log_filename", true, false);
-
-     filename = palloc(MAXPGPATH);
-
-     snprintf(filename, MAXPGPATH, "%s/", log_directory);
-
-     len = strlen(filename);
-
-     /* treat Log_filename as a strftime pattern */
-     pg_strftime(filename + len, MAXPGPATH - len, log_filename,
-                 pg_localtime(&timestamp, log_timezone));
-
-     if (suffix != NULL)
-     {
-         len = strlen(filename);
-         if (len > 4 && (strcmp(filename + (len - 4), ".log") == 0))
-             len -= 4;
-         strlcpy(filename + len, suffix, MAXPGPATH - len);
-     }
-
-     return filename;
-}
-
-Datum pg_lfgn(PG_FUNCTION_ARGS)
-{
-	pg_time_t logger_file_time = 0;
-	PG_RETURN_CSTRING(pg_lfgn_internal(logger_file_time, NULL));
-}
-
 Datum pg_read(PG_FUNCTION_ARGS)
 {
    char *filename;
@@ -287,11 +243,11 @@ Datum pg_read(PG_FUNCTION_ARGS)
    return (pg_read_internal(filename));
 }
 
-static Datum pg_read_internal(char *filename)
+static Datum pg_read_internal(const char *filename)
 {
 	
-	char		*log_filename;
-	char		*log_directory;
+	const char	*log_filename;
+	const char	*log_directory;
 	char		*full_log_filename;
 	PGFunction	func;
 	text		*lfn;	
@@ -391,7 +347,7 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	AttInMetadata	 *attinmeta;
 	MemoryContext 	oldcontext;
 
-	char		*log_filename = NULL;
+	const char	*log_filename = NULL;
 	int		line_count;
 	int		char_count;
 	char		*p;
@@ -465,18 +421,18 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 }
 
 
-Datum pg_refresh_log(PG_FUNCTION_ARGS)
+Datum pg_log_refresh(PG_FUNCTION_ARGS)
 {
 
-   return (pg_refresh_log_internal(fcinfo));
+   return (pg_log_refresh_internal(fcinfo));
 
 }
 
 
-static Datum pg_refresh_log_internal(FunctionCallInfo fcinfo)
+static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 {
 
-	char            *log_filename = NULL;
+	const char      *log_filename = NULL;
 	int             line_count;
         int             char_count;
         char            *p;
@@ -621,7 +577,7 @@ pg_log_main(PG_FUNCTION_ARGS)
 		StartTransactionCommand();
 		PushActiveSnapshot(GetTransactionSnapshot());
 
-		pg_refresh_log_internal(fcinfo);
+		pg_log_refresh_internal(fcinfo);
 
 		PopActiveSnapshot();
 		CommitTransactionCommand();
