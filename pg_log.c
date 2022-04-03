@@ -204,6 +204,7 @@ static char *pg_get_logname_internal()
 	initStringInfo(&buf_select);
 	appendStringInfo(&buf_select, "select name  from pg_ls_logdir() where modification = (select max(modification) from pg_ls_logdir())");
 
+	pgstat_report_activity(STATE_RUNNING, buf_select.data);
 	ret_code = SPI_execute(buf_select.data, false, 0);
 	rows_number = SPI_processed;
 
@@ -224,8 +225,12 @@ static char *pg_get_logname_internal()
 	returned_filename = SPI_palloc(strlen(filename) + 1);
 	strcpy(returned_filename, filename);
 
+	pgstat_report_activity(STATE_IDLE, NULL);	
+
 	SPI_finish();	
-	
+
+	pgstat_report_stat(false);
+
 	return returned_filename;
 
 }
@@ -454,7 +459,10 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 	SPI_connect();
 
+	pgstat_report_activity(STATE_RUNNING, "truncate table pglog");
 	SPI_execute("truncate table pglog", false, 0);
+	pgstat_report_stat(false);
+	pgstat_report_activity(STATE_IDLE, NULL);
 
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
 
@@ -477,7 +485,10 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 			values[0] = Int32GetDatum(line_count);
 			values[1] = CStringGetTextDatum(buf_v2);
+
+			pgstat_report_activity(STATE_RUNNING, buf_insert.data);
 			ret_code = SPI_execute_plan(plan_ptr, values, NULL, false, 0);	
+			pgstat_report_activity(STATE_IDLE, NULL);
 
 			if (ret_code != SPI_OK_INSERT)
 				 elog(ERROR, "INSERT INTO pglog failed");
@@ -488,6 +499,7 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
         }
 
 	SPI_finish();
+	pgstat_report_stat(false);
 
 	return (Datum)0;
 }
