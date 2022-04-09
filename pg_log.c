@@ -68,7 +68,7 @@ static double pg_log_fraction;
 static int pg_log_naptime;
 
 /*
- * for result routines
+ * structure to access log data 
  */
 struct	logdata {
 	text	*data;
@@ -77,6 +77,7 @@ struct	logdata {
 	int	i; 
 	int	max_line_size;
 	char	*p;
+	int	first_newline_position;
 } g_logdata;
 
 /*
@@ -206,6 +207,19 @@ static void logdata_start(text *p_result)
 	g_logdata.line_count = 0;
        	g_logdata.i = 0;
 	g_logdata.max_line_size = 0;
+	g_logdata.first_newline_position = -1;
+
+}
+
+static void logdata_start_from_newline(text *p_result)
+{
+	/*
+	 * to start reading after first newline
+	 */
+	g_logdata.char_count = g_logdata.first_newline_position + 1;
+       	g_logdata.p = (char *)VARDATA(p_result) + g_logdata.first_newline_position + 1;
+	g_logdata.line_count = 0;
+       	g_logdata.i = 0;
 
 }
 
@@ -264,6 +278,11 @@ static int logdata_get_line_count()
 static int logdata_get_max_line_size()
 {
 	return g_logdata.max_line_size;
+}
+
+static void logdata_set_first_newline_position (int pos)
+{
+	g_logdata.first_newline_position = pos;
 }
 
 /* --- ---- */
@@ -345,7 +364,6 @@ static Datum pg_read_internal(const char *filename)
 	text		*result;
 	char		c;
 	int		first_newline_position = 0;
-	text		*new_result;
 
 
 	log_filename = pg_get_logname_internal();
@@ -392,18 +410,11 @@ static Datum pg_read_internal(const char *filename)
 		}
 	
 	}
+
+	logdata_set_first_newline_position(first_newline_position);
+
 	elog(DEBUG1, "pg_log: checked %d characters in %d lines (longest=%d)", logdata_get_char_count(), logdata_get_line_count(), logdata_get_max_line_size());
-
-	/*
-	 * make sure first line is a full line 
-	 */
-	new_result = palloc(VARSIZE_ANY_EXHDR(result) + VARHDRSZ);
-	SET_VARSIZE(new_result, VARSIZE_ANY_EXHDR(result) + VARHDRSZ - first_newline_position - 1);
-	memcpy((char *)VARDATA(new_result), 
-		(char *)VARDATA(result) + first_newline_position + 1, 
-		VARSIZE_ANY_EXHDR(result) - first_newline_position - 1);
-
-	g_result = new_result;
+	g_result = result;
 
 	return (Datum)0;
 
@@ -464,7 +475,7 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 
 	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-	for (logdata_start(g_result), i=0 ;logdata_has_more();logdata_next(), i++)
+	for (logdata_start_from_newline(g_result), i=0 ;logdata_has_more();logdata_next(), i++)
         {
 		char		buf_v1[20];
 		char		buf_v2[PG_LOG_MAX_LINE_SIZE];
@@ -533,41 +544,7 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
 
-	/*
-	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
-             char_count < VARSIZE(g_result);
-             char_count++, i++)
-        {
-
-                c = *(p + char_count);
-                buf_v2[i] = c;
-
-                if ( i > PG_LOG_MAX_LINE_SIZE - 1)
-                        elog(ERROR, "pg_log: log line %d larger than %d", line_count + 1, PG_LOG_MAX_LINE_SIZE);
-
-                if (c == '\n')
-                {
-                        buf_v2[i] = '\0';
-                        line_count++;
-                        i = -1;
-
-			values[0] = Int32GetDatum(line_count);
-			values[1] = CStringGetTextDatum(buf_v2);
-
-			pgstat_report_activity(STATE_RUNNING, buf_insert.data);
-			ret_code = SPI_execute_plan(plan_ptr, values, NULL, false, 0);	
-			pgstat_report_activity(STATE_IDLE, NULL);
-
-			if (ret_code != SPI_OK_INSERT)
-				 elog(ERROR, "INSERT INTO pglog failed");
-        		if (SPI_processed != 1)
-				 elog(ERROR, "INSERT INTO pglog did not process 1 row");
-
-                }
-        }
-	*/
-
-	for (logdata_start(g_result), i = 0; logdata_has_more(); logdata_next(), i++)
+	for (logdata_start_from_newline(g_result), i = 0; logdata_has_more(); logdata_next(), i++)
         {
 		c = logdata_get();
                 buf_v2[i] = c;
