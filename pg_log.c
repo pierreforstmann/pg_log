@@ -392,7 +392,7 @@ static Datum pg_read_internal(const char *filename)
 		}
 	
 	}
-	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", logdata_get_char_count(), logdata_get_line_count(), logdata_get_max_line_size());
+	elog(DEBUG1, "pg_log: checked %d characters in %d lines (longest=%d)", logdata_get_char_count(), logdata_get_line_count(), logdata_get_max_line_size());
 
 	/*
 	 * make sure first line is a full line 
@@ -508,9 +508,6 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 {
 
 	const char      *log_filename = NULL;
-	int             line_count;
-        int             char_count;
-        char            *p;
         int             i;
         int             c;
 	StringInfoData	buf_insert;
@@ -536,6 +533,7 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
 
+	/*
 	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
              char_count < VARSIZE(g_result);
              char_count++, i++)
@@ -567,6 +565,38 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
                 }
         }
+	*/
+
+	for (logdata_start(g_result), i = 0; logdata_has_more(); logdata_next(), i++)
+        {
+		c = logdata_get();
+                buf_v2[i] = c;
+
+                if ( logdata_get_index() > PG_LOG_MAX_LINE_SIZE - 1)
+                        elog(ERROR, "pg_log: log line %d larger than %d", logdata_get_line_count() + 1, PG_LOG_MAX_LINE_SIZE);
+
+                if (c == '\n')
+                {
+                        buf_v2[i] = '\0';
+			logdata_incr_line_count();
+                        i = -1;
+
+                        values[0] = Int32GetDatum(logdata_get_line_count());
+                        values[1] = CStringGetTextDatum(buf_v2);
+
+                        pgstat_report_activity(STATE_RUNNING, buf_insert.data);
+                        ret_code = SPI_execute_plan(plan_ptr, values, NULL, false, 0);  
+                        pgstat_report_activity(STATE_IDLE, NULL);
+
+                        if (ret_code != SPI_OK_INSERT)
+                                 elog(ERROR, "INSERT INTO pglog failed");
+                        if (SPI_processed != 1)
+                                 elog(ERROR, "INSERT INTO pglog did not process 1 row");
+
+                }
+        }
+
+
 
 	SPI_finish();
 	pgstat_report_stat(false);
