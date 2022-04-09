@@ -42,7 +42,7 @@
 
 #include "utils/builtins.h"
 
-#define PG_LOG_MAX_LINE_SIZE	1000
+#define PG_LOG_MAX_LINE_SIZE	32768	
 
 PG_MODULE_MAGIC;
 
@@ -67,6 +67,17 @@ static text *g_result;
 static double pg_log_fraction;
 static int pg_log_naptime;
 
+/*
+ * for result routines
+ */
+struct	logdata {
+	text	*data;
+	int	char_count;
+	int	line_count;
+	int	i; 
+	int	max_line_size;
+	char	*p;
+} g_logdata;
 
 /*
  * flags set by signal handlers
@@ -184,7 +195,78 @@ _PG_fini(void)
 
 	elog(DEBUG5, "pg_log:_PG_fini():exit");
 }
+/* --- ---- */
 
+
+static void logdata_start(text *p_result)
+{
+	g_logdata.data = p_result;	
+	g_logdata.char_count = 0;
+       	g_logdata.p = VARDATA(p_result);
+	g_logdata.line_count = 0;
+       	g_logdata.i = 0;
+	g_logdata.max_line_size = 0;
+
+}
+
+static bool logdata_has_more()
+{
+	return  g_logdata.char_count < VARSIZE(g_logdata.data);
+
+}
+
+static void logdata_next()
+{
+        g_logdata.char_count++;
+	g_logdata.i++;
+}
+
+static	char logdata_get()
+{
+	return *(g_logdata.p + g_logdata.char_count);
+}
+
+static	void logdata_incr_line_count()
+{
+	g_logdata.line_count++;
+}
+
+static void logdata_set_max_line_size()
+{
+	g_logdata.max_line_size = g_logdata.i;
+}
+
+static bool logdata_index_gt_max_line_size()
+{
+	return g_logdata.i > g_logdata.max_line_size;
+}
+
+static int logdata_get_index()
+{
+	return g_logdata.i;
+}
+
+static void logdata_reset_index()
+{
+	g_logdata.i = 0;
+}
+
+static int logdata_get_char_count()
+{
+	return g_logdata.char_count;
+}
+
+static int logdata_get_line_count()
+{
+	return g_logdata.line_count;
+}
+
+static int logdata_get_max_line_size()
+{
+	return g_logdata.max_line_size;
+}
+
+/* --- ---- */
 
 static char *pg_get_logname_internal()
 {
@@ -261,12 +343,7 @@ static Datum pg_read_internal(const char *filename)
 	struct stat	stat_buf;
 	int		rc;
 	text		*result;
-	int		char_count;
-	int		line_count;
-	char		*p;
 	char		c;
-	int 		i;
-	int		max_line_size;
 	int		first_newline_position = 0;
 	text		*new_result;
 
@@ -286,10 +363,10 @@ static Datum pg_read_internal(const char *filename)
 	if (rc != 0)
 		elog(ERROR, "pg_log: stat failed on %s", full_log_filename);
 
-	elog(INFO, "pg_log: %s has %ld bytes", full_log_filename, stat_buf.st_size); 
+	elog(DEBUG1, "pg_log: %s has %ld bytes", full_log_filename, stat_buf.st_size); 
 
 	/*
-	 * by default read only the last 10%
+	 * by default read only the last lines corresponding to pg_log.fraction
 	 */
 	offset = stat_buf.st_size * ( 1 - pg_log_fraction);
 	length = stat_buf.st_size * pg_log_fraction; 
@@ -301,23 +378,21 @@ static Datum pg_read_internal(const char *filename)
 	 * check returned data
 	 */
 
-	for (char_count = 0, p = VARDATA(result), line_count = 0, i = 0, max_line_size = 0;
-	     char_count < VARSIZE(result); 
-	     char_count++, i++)
+	for (logdata_start(result);  logdata_has_more(); logdata_next())
 	{
-		c = *(p + char_count);
+		c = logdata_get();
 		if (c == '\n')
 		{
 			  if (first_newline_position == 0)
-				  first_newline_position = i;
-			  line_count++;
-			  if (i > max_line_size)
-				  max_line_size = i;
-			  i = 0;
+				  first_newline_position = logdata_get_index();
+			  logdata_incr_line_count();
+			  if (logdata_index_gt_max_line_size())
+			  	logdata_set_max_line_size();
+			  logdata_reset_index();
 		}
-	}		
-
-	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", char_count, line_count, max_line_size);
+	
+	}
+	elog(INFO, "pg_log: checked %d characters in %d lines (longest=%d)", logdata_get_char_count(), logdata_get_line_count(), logdata_get_max_line_size());
 
 	/*
 	 * make sure first line is a full line 
@@ -353,9 +428,6 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 	MemoryContext 	oldcontext;
 
 	const char	*log_filename = NULL;
-	int		line_count;
-	int		char_count;
-	char		*p;
 	int		i;
 	int		c;
 
@@ -392,26 +464,24 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 
 	attinmeta = TupleDescGetAttInMetadata(tupdesc);
 
-	for (char_count = 0, p = VARDATA(g_result), line_count = 0, i = 0;
-             char_count < VARSIZE(g_result);
-             char_count++, i++)
+	for (logdata_start(g_result), i=0 ;logdata_has_more();logdata_next(), i++)
         {
 		char		buf_v1[20];
 		char		buf_v2[PG_LOG_MAX_LINE_SIZE];
 		char 		*values[2];
 		HeapTuple	tuple;
 
-                c = *(p + char_count);
+		c = logdata_get();
 		buf_v2[i] = c;
 		
-		if ( i > PG_LOG_MAX_LINE_SIZE - 1)
-			elog(ERROR, "pg_log: log line %d larger than %d", line_count + 1, PG_LOG_MAX_LINE_SIZE);
+		if ( logdata_get_index() > PG_LOG_MAX_LINE_SIZE - 1)
+			elog(ERROR, "pg_log: log line %d larger than %d", logdata_get_line_count() + 1, PG_LOG_MAX_LINE_SIZE);
 
                 if (c == '\n')
                 {
-			sprintf(buf_v1, "%d", line_count);	
+			sprintf(buf_v1, "%d", logdata_get_line_count());	
 			buf_v2[i] = '\0';
-			line_count++;
+			logdata_incr_line_count();
 			i = -1;
 
 			values[0] = buf_v1;
