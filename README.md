@@ -1,5 +1,5 @@
 # pg_log
-PostgreSQL extension to display log with a SQL function
+PostgreSQL extension to display log from SQL
 
 
 # Installation
@@ -12,26 +12,37 @@ This module can be built using the standard PGXS infrastructure. For this to wor
 `make` <br>
 `make install` <br>
 
-This extension has been validated with PostgreSQL  14.
+This extension has been validated with PostgreSQL 10, 11, 12, 13 and 14.
 
 ## PostgreSQL setup
 
-Extension can be loaded:
-
-1. in local session with `LOAD pg_log`; <br>
-2. using `session_preload_libraries` parameter in a specific connection <br>
-3. at server level with `shared_preload_libraries` parameter. <br> 
+Extension must loaded at server level with `shared_preload_libraries` parameter.
 
 # Usage
-`pg_log` has no specific GUC.
+`pg_log` has 3 specific GUC settings:
+1. `pg_log.fraction` which is the log fraction that is displayed between 0 and 1. To display 10% of log contents starting from the end, use `pg_log.fraction=0.1`.
+2. pg_log.naptime is the duration between each log refresh in the database. Default is 30 seconds.
+3. pg_log.datname is the database name where `pglog` table and `log` view are created. This database must be created before installing the extension. Default database name is `pg_log`.
 
 ## Example
 
-In postgresql.conf:
+Add in `postgresql.conf`:
 
 `shared_preload_libraries = 'pg_log'` <br>
 
-To display full log contents, run:
+Create database `pg_log`
+
+`create database pg_log;`
+
+Run in database `pg_log':
+`create extension pg_log`
+
+To display 10% of log contents connect to database `pg_log` and query the `log` view:
+`\c pg_log
+select * from log;
+`
+
+
 
 ` select pg_log();`
 
