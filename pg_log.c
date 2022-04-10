@@ -42,7 +42,7 @@
 
 #include "utils/builtins.h"
 
-#if PG_VERSION_NUM < 110000
+#if PG_VERSION_NUM < 120000
 #include "catalog/pg_type.h"
 #endif
 
