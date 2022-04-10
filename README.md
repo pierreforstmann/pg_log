@@ -30,7 +30,7 @@ Add in `postgresql.conf`:
 
 `shared_preload_libraries = 'pg_log'` <br>
 
-Create database `pg_log`
+Create database `pg_log`:
 
 `create database pg_log;`
 
