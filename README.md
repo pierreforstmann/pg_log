@@ -38,7 +38,6 @@ Run in database `pg_log':
 `create extension pg_log`
 
 To display 10% of log contents connect to database `pg_log` and query the `log` view:
-`\c pg_log
-select * from log;
-`
+`\c pg_log`
+`select * from log;`
 
