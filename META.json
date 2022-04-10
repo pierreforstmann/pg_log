@@ -19,7 +19,7 @@
       }
    },
    "provides": {
-     "pg_queryid": {
+     "pg_log": {
          "abstract": "displays log content from SQL",
          "file": "pg_log.c",
          "docfile": "README.md",
