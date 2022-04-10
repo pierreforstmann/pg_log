@@ -1,6 +1,6 @@
 {
    "name": "pg_logq",
-   "abstract": "displays log content from database session",
+   "abstract": "displays log content from SQL",
    "version": "0.0.1",
    "maintainer": [
       "Pierre Forstmann"
@@ -11,16 +11,16 @@
    "prereqs": {
       "runtime": {
          "requires": {
-            "PostgreSQL": "9.4.0"
+            "PostgreSQL": "10"
          },
          "recommends": {
-            "PostgreSQL": "9.5.21"
+            "PostgreSQL": "14.2"
          }
       }
    },
    "provides": {
      "pg_queryid": {
-         "abstract": "displays log content from database session",
+         "abstract": "displays log content from SQL",
          "file": "pg_log.c",
          "docfile": "README.md",
          "version": "0.0.1"
