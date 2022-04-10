@@ -1,7 +1,7 @@
 --
 -- pg_log--0.0.1.sql
 --
--- script must be run in database named pg_log
+-- script must be run in database name corresponding to pg_log.datname 
 --
 DROP TABLE IF EXISTS log;
 DROP VIEW IF EXISTS log;

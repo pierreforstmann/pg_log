@@ -66,6 +66,8 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo);
 static text *g_result;
 static double pg_log_fraction;
 static int pg_log_naptime;
+static char *pg_log_datname = NULL;
+static char *pg_log_default_datname = "pg_log";
 
 /*
  * structure to access log data 
@@ -156,6 +158,18 @@ _PG_init(void)
 				NULL,
 				NULL);
 
+	DefineCustomStringVariable("pg_log.datname",
+				"database name",
+				NULL,
+				&pg_log_datname,
+				NULL,
+				PGC_POSTMASTER,
+				0,
+				NULL,
+				NULL,
+				NULL);
+	
+
 	/* set up common data for all our workers */
 	memset(&worker, 0, sizeof(worker));
 	worker.bgw_flags = BGWORKER_SHMEM_ACCESS |
@@ -174,14 +188,14 @@ _PG_init(void)
 
 	RegisterBackgroundWorker(&worker);
 
-	elog(LOG, "%s started with pg_log.naptime=%d seconds", 
-                  worker.bgw_name,
-                  pg_log_naptime);
+	elog(LOG, "%s started with pg_log.naptime=%d seconds", worker.bgw_name, pg_log_naptime);
 
-	elog(LOG, "%s started with pg_log.fraction=%f", 
-                  worker.bgw_name,
-                  pg_log_fraction);
+	elog(LOG, "%s started with pg_log.fraction=%f", worker.bgw_name, pg_log_fraction);
 
+	if (pg_log_datname == NULL)
+		pg_log_datname = pg_log_default_datname;
+
+	elog(LOG, "%s started with pg_log.datname=%s", worker.bgw_name, pg_log_datname);
 
 	elog(DEBUG5, "pg_log:_PG_init():exit");
 }
@@ -599,9 +613,9 @@ pg_log_main(PG_FUNCTION_ARGS)
 
 	/* Connect to our database */
 #if PG_VERSION_NUM >=110000
-	BackgroundWorkerInitializeConnection("pg_log", NULL, 0);
+	BackgroundWorkerInitializeConnection(pg_log_datname, NULL, 0);
 #else
-	BackgroundWorkerInitializeConnection("pg_log", NULL);
+	BackgroundWorkerInitializeConnection(pg_log_datname, NULL);
 #endif
 	elog(LOG, "%s initialized", MyBgworkerEntry->bgw_name);
 
