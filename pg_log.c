@@ -42,6 +42,10 @@
 
 #include "utils/builtins.h"
 
+#if PG_VERSION_NUM < 110000
+#include "catalog/pg_type.h"
+#endif
+
 #define PG_LOG_MAX_LINE_SIZE	32768	
 
 PG_MODULE_MAGIC;
@@ -230,8 +234,9 @@ static void logdata_start_from_newline(text *p_result)
 	/*
 	 * to start reading after first newline
 	 */
+	g_logdata.data = p_result;	
 	g_logdata.char_count = g_logdata.first_newline_position + 1;
-       	g_logdata.p = (char *)VARDATA(p_result) + g_logdata.first_newline_position + 1;
+       	g_logdata.p = (char *)VARDATA(p_result);
 	g_logdata.line_count = 0;
        	g_logdata.i = 0;
 
@@ -402,8 +407,11 @@ static Datum pg_read_internal(const char *filename)
 	 */
 	offset = stat_buf.st_size * ( 1 - pg_log_fraction);
 	length = stat_buf.st_size * pg_log_fraction; 
-
+#if PG_VERSION_NUM > 110000
 	func = pg_read_file_v2;
+#else
+	func = pg_read_file;
+#endif
 	result =  (text *)DirectFunctionCall3(func, (Datum)lfn, (Datum)offset, (Datum)length);
 
 	/*
@@ -553,7 +561,10 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 	pgstat_report_activity(STATE_RUNNING, "truncate table pglog");
 	SPI_execute("truncate table pglog", false, 0);
-	pgstat_report_stat(false);
+	/*
+	** shoud only be called when not in a transaction
+	** pgstat_report_stat(false);
+	*/
 	pgstat_report_activity(STATE_IDLE, NULL);
 
 	plan_ptr = SPI_prepare(buf_insert.data, 2, argtypes);
@@ -590,8 +601,10 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
 
 
 	SPI_finish();
-	pgstat_report_stat(false);
-
+	/*
+	** shoud only be called when not in a transaction
+	** pgstat_report_stat(false);
+	*/
 	return (Datum)0;
 }
 
