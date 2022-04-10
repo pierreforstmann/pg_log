@@ -22,7 +22,7 @@ Extension must loaded at server level with `shared_preload_libraries` parameter.
 `pg_log` has 3 specific GUC settings:
 1. `pg_log.fraction` which is the log fraction that is displayed between 0 and 1. To display 10% of log contents starting from the end, use `pg_log.fraction=0.1`.
 2. `pg_log.naptime` is the duration between each log refresh in the database. Default is 30 seconds.
-3. pg_log.datname is the database name where `pglog` table and `log` view are created. This database must be created before installing the extension. Default database name is `pg_log`.
+3. `pg_log.datname` is the database name where `pglog` table and `log` view are created. This database must be created before installing the extension. Default database name is `pg_log`.
 
 ## Example
 
