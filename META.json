@@ -1,7 +1,7 @@
 {
    "name": "pg_log",
    "abstract": "displays log content from SQL",
-   "version": "0.0.1",
+   "version": "0.0.2",
    "maintainer": [
       "Pierre Forstmann"
    ],
@@ -23,7 +23,7 @@
          "abstract": "displays log content from SQL",
          "file": "pg_log.c",
          "docfile": "README.md",
-         "version": "0.0.1"
+         "version": "0.0.2"
       }
    },
    "resources": {
