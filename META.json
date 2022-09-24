@@ -1,7 +1,7 @@
 {
-   "name": "pg_procfs",
-   "abstract": "displays /procfs data from SQL",
-   "version": "0.0.1",
+   "name": "pg_log",
+   "abstract": "displays log content from SQL",
+   "version": "0.0.2",
    "maintainer": [
       "Pierre Forstmann"
    ],
@@ -19,20 +19,20 @@
       }
    },
    "provides": {
-     "pg_procfs": {
-         "abstract": "displays /procfs data from SQL",
-         "file": "pg_procfs.c",
+     "pg_log": {
+         "abstract": "displays log content from SQL",
+         "file": "pg_log.c",
          "docfile": "README.md",
-         "version": "0.0.1"
+         "version": "0.0.2"
       }
    },
    "resources": {
       "bugtracker": {
-         "web": "http://github.com/pierreforstmann/pg_procfs/issues"
+         "web": "http://github.com/pierreforstmann/pg_log/issues"
       },
       "repository": {
-        "url":  "https://github.com/pierreforstmann/pg_procfs.git",
-        "web":  "https://github.com/pierreforstmann/pg_procfs",
+        "url":  "https://github.com/pierreforstmann/pg_log.git",
+        "web":  "https://github.com/pierreforstmann/pg_log",
         "type": "git"
       }
    },
@@ -42,7 +42,8 @@
       "url": "http://pgxn.org/meta/spec.txt"
    },
    "tags": [
-      "/procfs"
+      "log",
+      "messages"
    ],
    "release_status": "testing"
 }
