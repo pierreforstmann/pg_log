@@ -65,17 +65,68 @@ static Datum pg_read_internal(const char *filename);
 static Datum pg_log_internal(FunctionCallInfo fcinfo);
 static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo);
 
-/*---- Variable declarations ----*/
+/*---- Global variable declarations ----*/
 
-static text *g_result;
+/*
+ * GUC settings
+ */
 static double pg_log_fraction;
 static int pg_log_naptime;
 static char *pg_log_datname = NULL;
 static char *pg_log_default_datname = "pg_log";
 
 /*
- * structure to access log data 
+ * pg_read_file_v2 output
  */
+static text *g_result;
+
+/*
+ * structure to store log data 
+ *
+ * About text, VARDATA and VARSIZE:
+ *
+ * 1. text is defined in PG c.h as:
+ *
+ * typedef struct varlena text;
+ *
+ * with:
+ *
+ * struct varlena
+ * {
+ *    char        vl_len_[4];
+ *    char        vl_dat[FLEXIBLE_ARRAY_MEMBER];
+ * }
+ *
+ * #define FLEXIBLE_ARRAY_MEMBER   // empty
+ *
+ * 2. VARDATA and VARSIZE are defined in postgres.h as:
+ *
+ *  #define VARDATA(PTR)                        VARDATA_4B(PTR)
+ *  #define VARSIZE(PTR)                        VARSIZE_4B(PTR)
+ *
+ *  with:
+ *
+ *  #define VARDATA_4B(PTR)     (((varattrib_4b *) (PTR))->va_4byte.va_data)
+ *  #define VARSIZE_4B(PTR) \
+ *    ((((varattrib_4b *) (PTR))->va_4byte.va_header >> 2) & 0x3FFFFFFF)
+ *
+ * typedef union
+ * {
+ *    struct
+ *    {
+ *        uint32      va_header;
+ *        char        va_data[FLEXIBLE_ARRAY_MEMBER];
+ *    }           va_4byte;
+ *    struct
+ *    {
+ *        uint32      va_header;
+ *        uint32      va_tcinfo;/
+ *        char        va_data[FLEXIBLE_ARRAY_MEMBER];
+ *    }           va_compressed;
+ *  } varattrib_4b;
+ *
+ */
+
 struct	{
 	text	*data;
 	int	char_count;
@@ -434,8 +485,14 @@ static Datum pg_read_internal(const char *filename)
 		}
 	
 	}
-
-	logdata_set_first_newline_position(first_newline_position);
+	
+	/*
+	 * if all log must be read do not start at first new line position
+	 */
+	if (pg_log_fraction == 1)
+		logdata_set_first_newline_position(0);
+	else
+ 		logdata_set_first_newline_position(first_newline_position);
 
 	elog(DEBUG1, "pg_log: checked %d characters in %d lines (longest=%d)", logdata_get_char_count(), logdata_get_line_count(), logdata_get_max_line_size());
 	g_result = result;
