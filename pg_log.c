@@ -76,13 +76,12 @@ static char *pg_log_default_datname = "pg_log";
 /*
  * structure to access log data 
  */
-struct	logdata {
+struct	{
 	text	*data;
 	int	char_count;
 	int	line_count;
 	int	i; 
 	int	max_line_size;
-	char	*p;
 	int	first_newline_position;
 } g_logdata;
 
@@ -221,7 +220,6 @@ static void logdata_start(text *p_result)
 {
 	g_logdata.data = p_result;	
 	g_logdata.char_count = 0;
-       	g_logdata.p = VARDATA(p_result);
 	g_logdata.line_count = 0;
        	g_logdata.i = 0;
 	g_logdata.max_line_size = 0;
@@ -236,7 +234,6 @@ static void logdata_start_from_newline(text *p_result)
 	 */
 	g_logdata.data = p_result;	
 	g_logdata.char_count = g_logdata.first_newline_position + 1;
-       	g_logdata.p = (char *)VARDATA(p_result);
 	g_logdata.line_count = 0;
        	g_logdata.i = 0;
 
@@ -256,7 +253,7 @@ static void logdata_next()
 
 static	char logdata_get()
 {
-	return *(g_logdata.p + g_logdata.char_count);
+	return *(VARDATA(g_logdata.data) + g_logdata.char_count);
 }
 
 static	void logdata_incr_line_count()
@@ -324,7 +321,11 @@ static char *pg_get_logname_internal()
 	initStringInfo(&buf_select);
 	appendStringInfo(&buf_select, "select name  from pg_ls_logdir() where modification = (select max(modification) from pg_ls_logdir())");
 
-	pgstat_report_activity(STATE_RUNNING, buf_select.data);
+	/*
+	 * pgstart_report_activity can only be called in a transaction:
+	 * TRAP: FailedAssertion("!IsTransactionOrTransactionBlock()", File: "pgstat.c", Line: 574
+	 */
+
 	ret_code = SPI_execute(buf_select.data, false, 0);
 	rows_number = SPI_processed;
 
@@ -345,11 +346,12 @@ static char *pg_get_logname_internal()
 	returned_filename = SPI_palloc(strlen(filename) + 1);
 	strcpy(returned_filename, filename);
 
-	pgstat_report_activity(STATE_IDLE, NULL);	
+	/*
+	 * pgstart_report_activity can only be called in a transaction
+	 * TRAP: FailedAssertion("!IsTransactionOrTransactionBlock()", File: "pgstat.c", Line: 574
+	 */
 
 	SPI_finish();	
-
-	pgstat_report_stat(false);
 
 	return returned_filename;
 
@@ -508,13 +510,16 @@ static Datum pg_log_internal(FunctionCallInfo fcinfo)
 		buf_v2[i] = c;
 		
 		if ( logdata_get_index() > PG_LOG_MAX_LINE_SIZE - 1)
+		{
 			elog(ERROR, "pg_log: log line %d larger than %d", logdata_get_line_count() + 1, PG_LOG_MAX_LINE_SIZE);
+		}
 
                 if (c == '\n')
                 {
 			sprintf(buf_v1, "%d", logdata_get_line_count());	
 			buf_v2[i] = '\0';
 			logdata_incr_line_count();
+			logdata_reset_index();
 			i = -1;
 
 			values[0] = buf_v1;
@@ -575,12 +580,15 @@ static Datum pg_log_refresh_internal(FunctionCallInfo fcinfo)
                 buf_v2[i] = c;
 
                 if ( logdata_get_index() > PG_LOG_MAX_LINE_SIZE - 1)
+		{
                         elog(ERROR, "pg_log: log line %d larger than %d", logdata_get_line_count() + 1, PG_LOG_MAX_LINE_SIZE);
+		}
 
                 if (c == '\n')
                 {
                         buf_v2[i] = '\0';
 			logdata_incr_line_count();
+			logdata_reset_index();
                         i = -1;
 
                         values[0] = Int32GetDatum(logdata_get_line_count());
