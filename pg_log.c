@@ -128,11 +128,20 @@ static text *g_result;
  */
 
 struct	{
+        /* data returned by pg_read_file_v2 */	
 	text	*data;
+	/* current number of processed characters */
 	int	char_count;
+	/* current number of processed lines */
 	int	line_count;
-	int	i; 
+	/* size of biggest line */
 	int	max_line_size;
+	/* index of current character in current line */
+	int	i; 
+	/* if pg_log_fraction != 1 this is used to start displaying data 
+	 * at beginning of the right line to avoid to display a broken
+	 * line.
+	 */
 	int	first_newline_position;
 } g_logdata;
 
@@ -284,7 +293,11 @@ static void logdata_start_from_newline(text *p_result)
 	 * to start reading after first newline
 	 */
 	g_logdata.data = p_result;	
-	g_logdata.char_count = g_logdata.first_newline_position + 1;
+	if (pg_log_fraction != 1)
+	 g_logdata.char_count = g_logdata.first_newline_position + 1;
+	else	
+	 g_logdata.char_count = 0;
+
 	g_logdata.line_count = 0;
        	g_logdata.i = 0;
 
