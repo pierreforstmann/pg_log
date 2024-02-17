@@ -12,7 +12,7 @@ This module can be built using the standard PGXS infrastructure. For this to wor
 `make` <br>
 `make install` <br>
 
-This extension has been validated with PostgreSQL 10, 11, 12, 13, 14 and 15.
+This extension has been validated with PostgreSQL 10, 11, 12, 13, 14, 15 and 16.
 
 ## PostgreSQL setup
 
@@ -20,9 +20,12 @@ Extension must loaded at server level with `shared_preload_libraries` parameter.
 
 `shared_preload_libraries = 'pg_log'`
 
-Following SQL statement should be run in the database that will store `pg_log` objects:
+Following SQL statement must be run in the database that will store `pg_log` objects:
 
 `create extension pg_log;`
+
+You must also set `logging_collector` to `on` and valid value for `log_filename`.
+
 
 # Usage
 `pg_log` has 3 specific GUC settings:
