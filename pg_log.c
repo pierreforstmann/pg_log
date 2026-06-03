@@ -473,7 +473,11 @@ static Datum pg_read_internal(const char *filename)
 	 */
 	offset = stat_buf.st_size * ( 1 - pg_log_fraction);
 	length = stat_buf.st_size * pg_log_fraction; 
+#if PG_VERSION_NUM >= 170000
+	func = pg_read_file_off_len;
+#else
 	func = pg_read_file;
+#endif
 	result =  (text *)DirectFunctionCall3(func, (Datum)lfn, (Datum)offset, (Datum)length);
 
 	/*
