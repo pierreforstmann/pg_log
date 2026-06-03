@@ -30,3 +30,50 @@ CREATE FUNCTION pg_log(OUT line integer, OUT message text) RETURNS SETOF record
 CREATE FUNCTION pg_log_refresh() RETURNS void 
  AS 'pg_log.so', 'pg_log_refresh'
  LANGUAGE C STRICT;
+--
+-- function taillog can be used independently to watch log with psql \waatch
+--
+CREATE OR REPLACE FUNCTION taillog(
+    bytes integer DEFAULT 5000
+)
+RETURNS text
+LANGUAGE plpgsql
+SET search_path = pg_temp
+AS $$
+DECLARE
+    log_size bigint;
+    start_pos bigint;
+    log_directory text;
+    log_filename text;
+    pgdata text;
+    full_log_filename text;
+BEGIN
+
+    -- Retrieve PG log file name
+   SELECT setting INTO log_directory FROM pg_settings WHERE name = 'log_directory';
+   IF NOT FOUND THEN
+      RAISE EXCEPTION 'log_directory not found in pg_settings';
+   END IF;
+   SELECT setting INTO pgdata FROM pg_settings WHERE name = 'data_directory';
+   IF NOT FOUND THEN
+      RAISE EXCEPTION 'data_directory not found in pg_settings';
+   END IF;
+   SELECT setting INTO log_filename FROM pg_settings WHERE name = 'log_filename';
+   IF NOT FOUND THEN
+      RAISE EXCEPTION 'log_filename not found in pg_settings';
+   END IF;
+   full_log_filename := pgdata || '/' || log_directory || '/' || log_filename;
+
+    -- Get current size
+    SELECT size INTO log_size
+    FROM pg_stat_file(full_log_filename);
+
+    -- Compute start position
+    start_pos := GREATEST(log_size - bytes, 0);
+
+    -- Return last bytes
+    RETURN pg_read_file(full_log_filename, start_pos, bytes);
+END;
+$$;
+--
+
