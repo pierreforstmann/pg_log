@@ -31,7 +31,7 @@ CREATE FUNCTION pg_log_refresh() RETURNS void
  AS 'pg_log.so', 'pg_log_refresh'
  LANGUAGE C STRICT;
 --
--- function taillog can be used independently to watch log with psql \waatch
+-- function taillog can be used independently to watch log with psql \watch
 --
 CREATE OR REPLACE FUNCTION taillog(
     bytes integer DEFAULT 5000
