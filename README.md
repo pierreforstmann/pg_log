@@ -27,7 +27,7 @@ Following SQL statement must be run in each database by superuser:
 
 `create extension pg_log;`
 
-For security reason, only supersuer can execute `flog()` 'nad `tlog()` function: https://commitfest.postgresql.org/patch/5597/.
+For security reason (https://commitfest.postgresql.org/patch/5597/), only superuser can execute `flog()` and `tlog()` functions.
 
 # Usage
 
