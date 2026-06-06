@@ -21,11 +21,13 @@ Note that `log_filename` must be set to constant name : %-escape parameters are 
 
 There is no GUC setting and there is no need to modify `shared_preload_libraries` parameter.
 
-Related PL/PGSQL function code reads log file contents for any `log_line_prefix` configuration without parsing log line (`file_fdw` foreign data wrapper is not used).
+Related PL/pgSQL function code reads log file contents for any `log_line_prefix` configuration without parsing log line (`file_fdw` foreign data wrapper is not used).
 
-Following SQL statement must be run in each database:
+Following SQL statement must be run in each database by superuser:
 
 `create extension pg_log;`
+
+For security reason, only supersuer can execute `flog()` 'nad `tlog()` function: https://commitfest.postgresql.org/patch/5597/.
 
 # Usage
 

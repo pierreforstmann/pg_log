@@ -1,7 +1,8 @@
 --
 -- pg_log--1.0.0.sql
 --
-
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION pg_log" to load this file. \quit
 
 --
 -- function flog displays full log file contents
@@ -40,7 +41,7 @@ BEGIN
     SELECT size INTO log_size
     FROM pg_stat_file(full_log_filename);
 
-    -- Return last bytes
+    -- Return all bytes
     RETURN pg_read_file(full_log_filename, 0, log_size);
 END;
 $$;
@@ -95,3 +96,18 @@ END;
 $$;
 --
 
+-- default privileges on function is EXECUTE (not displayed by pg_proc.proacl)
+--
+-- https://www.postgresql.org/docs/18/ddl-priv.html says
+--
+-- PostgreSQL grants privileges on some types of objects to PUBLIC by default when the objects are created. 
+-- No privileges are granted to PUBLIC by default on tables, table columns, sequences, foreign data wrappers, foreign servers, large objects, schemas, tablespaces, or configuration parameters. 
+-- For other types of objects, the default privileges granted to PUBLIC are as follows: 
+-- CONNECT and TEMPORARY (create temporary tables) privileges for databases; 
+-- EXECUTE privilege for functions and procedures; 
+-- and USAGE privilege for languages and data types (including domains).
+
+-- revoke privileges on public because log may display password for example
+--
+REVOKE EXECUTE ON FUNCTION FLOG FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION TLOG FROM PUBLIC;
