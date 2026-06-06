@@ -1,13 +1,10 @@
-MODULES = pg_log 
 EXTENSION = pg_log  # the extension's name
-DATA = pg_log--0.0.1.sql    # script file to install
-#REGRESS = xxx      # the test script file
+DATA = pg_log--1.0.0.sql    # script file to install
 
-# for posgres build
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
 #
 pgxn:
-	git archive --format zip  --output ../pgxn/pg_log/pg_log-0.0.3.zip main
+	git archive --format zip  --output ../pgxn/pg_log/pg_log-1.0.0.zip main

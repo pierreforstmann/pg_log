@@ -1,5 +1,5 @@
 # pg_log
-PostgreSQL extension to display log from SQL
+PostgreSQL extension to display instance log from SQL
 
 
 # Installation
@@ -12,41 +12,37 @@ This module can be built using the standard PGXS infrastructure. For this to wor
 `make` <br>
 `make install` <br>
 
-This extension has been validated with PostgreSQL 10, 11, 12, 13, 14, 15, 16, 17 and 18.
+This extension has been validated with PostgreSQL 14, 15, 16, 17 and 18.
 
 ## PostgreSQL setup
 
-Extension must loaded at server level with `shared_preload_libraries` parameter.
+You must first set `logging_collector` to `on` and valid value for `log_directory` and `log_filename`.
+Note that `log_filename` must be set to constant name : %-escape parameters are not supported.
 
-`shared_preload_libraries = 'pg_log'`
+There is no GUC setting and there is no need to modify `shared_preload_libraries` parameter.
 
-Following SQL statement must be run in the database that will store `pg_log` objects:
+Related PL/PGSQL function code reads log file contents for any `log_file_prefix` configuration without parsing log line (`file_fdw` foreign data wrapper is not used).
+
+Following SQL statement must be run in each database:
 
 `create extension pg_log;`
 
-You must also set `logging_collector` to `on` and valid value for `log_filename`.
-
-
 # Usage
-`pg_log` has 3 specific GUC settings:
-1. `pg_log.fraction` which is the log fraction that is displayed between 0 and 1. To display 10% of log contents starting from the end, use `pg_log.fraction=0.1`. Default value is 0.01 (1%).
-2. `pg_log.naptime` is the duration between each log refresh in the database. Default value is 30 seconds.
-3. `pg_log.datname` is the database name where `pglog` table and `log` view are created. This database must be created before installing the extension. Default database name is `pg_log`.
 
 ## Example
 
-Add in `postgresql.conf`:
-
-`shared_preload_libraries = 'pg_log'` <br>
-
-Create database `pg_log`:
-
-`create database pg_log;`
-
-Run in database `pg_log`: <br>
+Run: <br>
 `create extension pg_log`;
 
-To display 1% of log contents connect to database `pg_log` and query the `log` view:<br>
-`\c pg_log` <br>
-`select * from log;`<br>
+To display last 5000 bytes of log contents:<br>
+`select * from tlog();`<br>
 
+To display last 1000 bytes of log contents:<br>
+`select * from tlog(1000);`<br>
+
+To display full log file contents:<br>
+`select * from flog();`<br>
+
+To use psql to monitor log file in "real-time":
+`select * from tlog();`<br>
+`\watch`<br>
